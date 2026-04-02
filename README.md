@@ -1,36 +1,232 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 📊 Cost Assistant - Система факторного аналізу собівартості бройлера
 
-## Getting Started
+Система для автоматизованого факторного аналізу собівартості 1 кг тушки бройлера на базі **Next.js 16**, **LangGraph** та **Azure OpenAI**.
 
-First, run the development server:
+## 🏗️ Архітектура
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+┌─────────────────────────────────────────────────────┐
+│         Next.js 16 + shadcn/ui (Frontend)           │
+│    (форми вводу, таблиці результатів, водоспад)     │
+└─────────────────┬───────────────────────────────────┘
+                  │ API Routes
+┌─────────────────▼───────────────────────────────────┐
+│         LangGraph Orchestrator (Backend)            │
+│    (координує 4 агенти, передає дані між ними)      │
+└──────┬────────────┬────────────┬────────────────────┘
+       │            │            │
+   ┌───▼───┐   ┌───▼───┐   ┌───▼───┐
+   │Яйце   │   │Корм   │   │Бюджет │
+   │Агент  │   │Агент  │   │Агент  │
+   └───────┘   └───────┘   └───────┘
+                  │
+             ┌────▼────┐
+             │Зведений │
+             │Агент    │
+             └─────────┘
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 📋 Функціонал
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Блок 1: Яйце в собівартості тушки
+- Аналіз вартості яйця на 1 кг тушки
+- Фактори: ціна яйця, сортування, вивід, збереженість, жива вага, вихід тушки
+- Метод: ланцюгові підстановки
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Блок 2: Корм в собівартості тушки
+- Аналіз вартості корму через ціну, FCR та вихід тушки
+- Фактори: ціна корму по фазах (старт/ріст/фініш), FCR, вихід тушки
+- Додатково: розклад FCR на генетичний потенціал, якість корму, умови утримання, захворюваність
 
-## Learn More
+### Блок 3: Бюджет витрат
+- Аналіз витрат по 4 напрямках: Інкубація, Вирощування, Забій, ЦТФ
+- Розклад енергоносіїв на ціну та споживання
+- ТОП-5 факторів впливу
 
-To learn more about Next.js, take a look at the following resources:
+### Блок 6: Зведений аналіз
+- Водоспад відхилень собівартості
+- ТОП-3 негативних та позитивних фактори
+- Розподіл на зовнішні та внутрішні фактори
+- Управлінські пріоритети
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🚀 Швидкий старт
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 1. Встановлення залежностей
 
-## Deploy on Vercel
+```bash
+pnpm install
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 2. Налаштування змінних оточення
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Створіть файл `.env.local` на основі `.env.example`:
+
+```bash
+cp .env.example .env.local
+```
+
+Заповніть параметрами Azure OpenAI:
+
+```env
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+AZURE_OPENAI_API_KEY=your-api-key
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+```
+
+### 3. Запуск розробки
+
+```bash
+pnpm run dev
+```
+
+Відкрийте [http://localhost:3000](http://localhost:3000)
+
+### 4. Збірка для продакшену
+
+```bash
+pnpm run build
+pnpm run start
+```
+
+## 📁 Структура проєкту
+
+```
+cost-assistant/
+├── agents/                     # LangGraph агенти
+│   ├── egg-agent.ts            # Промт №1 - Яйце
+│   ├── feed-agent.ts           # Промт №2 - Корм
+│   ├── budget-agent.ts         # Промт №3 - Бюджет
+│   ├── summary-agent.ts        # Промт №6 - Зведений
+│   └── orchestrator.ts         # Координація агентів
+├── app/
+│   ├── api/
+│   │   └── analyze/            # API endpoints
+│   │       ├── route.ts        # POST /api/analyze
+│   │       └── agent/route.ts  # POST /api/analyze/agent
+│   ├── components/             # shadcn/ui компоненти
+│   ├── forms/                  # Форми вводу
+│   │   ├── egg-form.tsx
+│   │   └── feed-form.tsx
+│   ├── results/                # Результати
+│   │   └── analysis-results.tsx
+│   ├── layout.tsx
+│   └── page.tsx                # Головна сторінка
+├── components/ui/              # shadcn/ui базові компоненти
+├── lib/
+│   ├── calculations.ts         # Метод ланцюгових підстановок
+│   ├── llm.ts                  # Azure OpenAI конфігурація
+│   ├── prompts.ts              # Системні промти
+│   ├── types.ts                # TypeScript типи
+│   └── utils.ts
+├── .env.example                # Приклад змінних оточення
+├── package.json
+└── task.md                     # Технічне завдання
+```
+
+## 🔌 API
+
+### POST /api/analyze
+
+Запуск повного факторного аналізу.
+
+**Request Body:**
+```json
+{
+  "eggInput": {
+    "eggPrice": { "plan": 2.5, "fact": 2.7 },
+    "sorting": { "plan": 95, "fact": 93 },
+    "hatchability": { "plan": 85, "fact": 84 },
+    "survivability": { "plan": 98, "fact": 97 },
+    "liveWeight": { "plan": 2.5, "fact": 2.6 },
+    "carcassYield": { "plan": 75, "fact": 74 }
+  },
+  "feedInput": { ... },
+  "budgetInput": { ... }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "eggAnalysis": { ... },
+    "feedAnalysis": { ... },
+    "budgetAnalysis": { ... },
+    "summaryAnalysis": { ... },
+    "messages": [...]
+  }
+}
+```
+
+### POST /api/analyze/agent
+
+Запуск окремого агента.
+
+**Request Body:**
+```json
+{
+  "agent": "egg",
+  "input": { ... }
+}
+```
+
+## 🧮 Метод ланцюгових підстановок
+
+Формула для вартості яйця на 1 кг тушки:
+
+```
+Вартість яйця = Ціна яйця ÷ Сортування ÷ Вивід ÷ Збереженість ÷ Жива вага × Вихід тушки
+```
+
+Приклад розкладу відхилень:
+- ∆ Ціна яйця = Вплив зміни ціни
+- ∆ Сортування = Вплив зміни сортування
+- ∆ Вивід = Вплив зміни виводу
+- і т.д.
+
+## 🛠️ Технології
+
+- **Next.js 16** - React фреймворк з App Router
+- **TypeScript** - типізація
+- **shadcn/ui** - UI компоненти
+- **Tailwind CSS 4** - стилізація
+- **LangChain** - AI оркестрація
+- **Azure OpenAI** - LLM модель
+
+## 📝 Приклади використання
+
+### Приклад 1: Аналіз яйця через UI
+
+1. Відкрийте головну сторінку
+2. Заповніть форму "Аналіз вартості яйця"
+3. Натисніть "Розрахувати"
+4. Перегляньте результати з факторами та рекомендаціями
+
+### Приклад 2: API запит
+
+```bash
+curl -X POST http://localhost:3000/api/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "eggInput": {
+      "eggPrice": {"plan": 2.5, "fact": 2.7},
+      "sorting": {"plan": 95, "fact": 93},
+      "hatchability": {"plan": 85, "fact": 84},
+      "survivability": {"plan": 98, "fact": 97},
+      "liveWeight": {"plan": 2.5, "fact": 2.6},
+      "carcassYield": {"plan": 75, "fact": 74}
+    }
+  }'
+```
+
+## 🔐 Безпека
+
+- API ключі Azure OpenAI зберігаються тільки в `.env.local`
+- Не комітьте `.env.local` у git
+- Для продакшену використовуйте змінні оточення хостингу
+
+## 📄 Ліцензія
+
+Внутрішній проєкт для аналізу собівартості.
