@@ -1,248 +1,305 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ExcelUpload } from "@/components/forms/excel-upload";
+import { feedTestData } from "@/lib/test-data";
 import type { FeedInput } from "@/lib/types";
 
 interface FeedFormProps {
-  onSubmit: (data: FeedInput) => void;
-  isLoading?: boolean;
+  onChange: (data: FeedInput) => void;
+  testData?: FeedInput;
 }
 
-export function FeedForm({ onSubmit, isLoading }: FeedFormProps) {
-  const [formData, setFormData] = useState<FeedInput>({
-    feedPrice: {
-      start: { plan: 0, fact: 0 },
-      growth: { plan: 0, fact: 0 },
-      finish: { plan: 0, fact: 0 },
-    },
-    feedConsumption: {
-      start: { plan: 0, fact: 0 },
-      growth: { plan: 0, fact: 0 },
-      finish: { plan: 0, fact: 0 },
-    },
-    fcr: { plan: 0, fact: 0 },
-    liveWeight: { plan: 0, fact: 0 },
-    carcassYield: { plan: 0, fact: 0 },
-  });
+type InputMode = "manual" | "excel";
+type PhaseKey = "start" | "growth" | "finish";
 
-  const updatePrice = (phase: "start" | "growth" | "finish", value: number, isFact: boolean) => {
-    setFormData((prev) => ({
-      ...prev,
-      feedPrice: {
-        ...prev.feedPrice,
-        [phase]: {
-          ...prev.feedPrice[phase],
-          [isFact ? "fact" : "plan"]: value,
-        },
-      },
-    }));
+const EMPTY: FeedInput = {
+  feedPrice: {
+    start:  { plan: 0, fact: 0 },
+    growth: { plan: 0, fact: 0 },
+    finish: { plan: 0, fact: 0 },
+  },
+  feedConsumption: {
+    start:  { plan: 0, fact: 0 },
+    growth: { plan: 0, fact: 0 },
+    finish: { plan: 0, fact: 0 },
+  },
+  fcr:          { plan: 0, fact: 0 },
+  liveWeight:   { plan: 0, fact: 0 },
+  carcassYield: { plan: 0, fact: 0 },
+};
+
+const PHASES: { key: PhaseKey; label: string }[] = [
+  { key: "start",  label: "Старт" },
+  { key: "growth", label: "Ріст" },
+  { key: "finish", label: "Фініш" },
+];
+
+const OTHER: { key: "fcr" | "liveWeight" | "carcassYield"; label: string; step: string; unit: string }[] = [
+  { key: "fcr",          label: "FCR",                   step: "0.01", unit: "кг/кг" },
+  { key: "liveWeight",   label: "Жива вага при забої",  step: "0.01", unit: "кг" },
+  { key: "carcassYield", label: "Вихід тушки",          step: "0.1",  unit: "%" },
+];
+
+export function FeedForm({ onChange, testData }: FeedFormProps) {
+  const [mode, setMode] = useState<InputMode>("manual");
+  const [data, setData] = useState<FeedInput>(EMPTY);
+
+  useEffect(() => {
+    if (testData) {
+      setData(testData);
+      onChange(testData);
+    }
+  }, [testData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const updatePrice = (phase: PhaseKey, which: "plan" | "fact", raw: string) => {
+    const value = parseFloat(raw) || 0;
+    const next = {
+      ...data,
+      feedPrice: { ...data.feedPrice, [phase]: { ...data.feedPrice[phase], [which]: value } },
+    };
+    setData(next);
+    onChange(next);
   };
 
-  const updateConsumption = (phase: "start" | "growth" | "finish", value: number, isFact: boolean) => {
-    setFormData((prev) => ({
-      ...prev,
-      feedConsumption: {
-        ...prev.feedConsumption,
-        [phase]: {
-          ...prev.feedConsumption[phase],
-          [isFact ? "fact" : "plan"]: value,
-        },
-      },
-    }));
+  const updateCons = (phase: PhaseKey, which: "plan" | "fact", raw: string) => {
+    const value = parseFloat(raw) || 0;
+    const next = {
+      ...data,
+      feedConsumption: { ...data.feedConsumption, [phase]: { ...data.feedConsumption[phase], [which]: value } },
+    };
+    setData(next);
+    onChange(next);
   };
 
-  const updateField = (field: keyof FeedInput, value: number, isFact: boolean) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: {
-        ...prev[field],
-        [isFact ? "fact" : "plan"]: value,
-      },
-    }));
+  const updateOther = (field: "fcr" | "liveWeight" | "carcassYield", which: "plan" | "fact", raw: string) => {
+    const value = parseFloat(raw) || 0;
+    const next = { ...data, [field]: { ...data[field], [which]: value } };
+    setData(next);
+    onChange(next);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSubmit(formData);
+  const clear = () => {
+    setData(EMPTY);
+    onChange(EMPTY);
   };
+
+  const handleExcel = (parsed: Partial<FeedInput>) => {
+    const next = { ...EMPTY, ...parsed };
+    setData(next);
+    onChange(next);
+  };
+
+  const hasData = data.feedPrice.start.plan > 0;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>🌾 Аналіз вартості корму</CardTitle>
-        <CardDescription>
-          Введіть дані по цінах корму та витратах по фазах відгодівлі
-        </CardDescription>
+    <Card className="flex flex-col">
+      <CardHeader className="pb-3">
+        <div>
+          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Блок 2
+          </CardTitle>
+          <p className="text-base font-semibold text-foreground mt-0.5">
+            Корм в собівартості тушки
+          </p>
+          <CardDescription className="text-xs mt-1 leading-relaxed">
+            Ціна корму (зважена по фазах) × FCR ÷ вихід тушки
+          </CardDescription>
+        </div>
+
+        {/* Mode tabs */}
+        <div className="mt-3 flex rounded-md border bg-muted p-0.5 w-fit gap-0.5">
+          {(["manual", "excel"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={[
+                "rounded px-3 py-1.5 text-xs font-medium transition-all",
+                mode === m
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+            >
+              {m === "manual" ? "Варіант А — вручну" : "Варіант Б — Excel"}
+            </button>
+          ))}
+        </div>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <Tabs defaultValue="prices">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="prices">Ціни корму (грн/кг)</TabsTrigger>
-              <TabsTrigger value="consumption">Витрати корму (кг/гол)</TabsTrigger>
-              <TabsTrigger value="other">Інші показники</TabsTrigger>
-            </TabsList>
 
-            <TabsContent value="prices" className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="font-semibold">Фаза</div>
-                <div className="font-semibold">План</div>
-                <div className="font-semibold">Факт</div>
-
-                <Label className="flex items-center">Старт</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.feedPrice.start.plan}
-                  onChange={(e) => updatePrice("start", parseFloat(e.target.value) || 0, false)}
-                />
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.feedPrice.start.fact}
-                  onChange={(e) => updatePrice("start", parseFloat(e.target.value) || 0, true)}
-                />
-
-                <Label className="flex items-center">Ріст</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.feedPrice.growth.plan}
-                  onChange={(e) => updatePrice("growth", parseFloat(e.target.value) || 0, false)}
-                />
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.feedPrice.growth.fact}
-                  onChange={(e) => updatePrice("growth", parseFloat(e.target.value) || 0, true)}
-                />
-
-                <Label className="flex items-center">Фініш</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.feedPrice.finish.plan}
-                  onChange={(e) => updatePrice("finish", parseFloat(e.target.value) || 0, false)}
-                />
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.feedPrice.finish.fact}
-                  onChange={(e) => updatePrice("finish", parseFloat(e.target.value) || 0, true)}
-                />
+      <CardContent className="flex-1 pt-0">
+        {mode === "manual" ? (
+          <div className="space-y-4">
+            {/* Prices */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                Ціна корму (грн/кг)
+              </p>
+              <div className="divide-y rounded-md border overflow-hidden">
+                {PHASES.map(({ key, label }) => (
+                  <div
+                    key={`price-${key}`}
+                    className="grid grid-cols-[1fr_80px_80px] gap-x-2 items-center px-3 py-2 bg-card hover:bg-muted/30 transition-colors"
+                  >
+                    <Label className="text-sm font-normal">{label}</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={data.feedPrice[key].plan || ""}
+                      onChange={(e) => updatePrice(key, "plan", e.target.value)}
+                      className="h-7 text-center text-sm px-1"
+                      placeholder="0"
+                    />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={data.feedPrice[key].fact || ""}
+                      onChange={(e) => updatePrice(key, "fact", e.target.value)}
+                      className="h-7 text-center text-sm px-1"
+                      placeholder="0"
+                    />
+                  </div>
+                ))}
               </div>
-            </TabsContent>
+            </div>
 
-            <TabsContent value="consumption" className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="font-semibold">Фаза</div>
-                <div className="font-semibold">План</div>
-                <div className="font-semibold">Факт</div>
-
-                <Label className="flex items-center">Старт</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.feedConsumption.start.plan}
-                  onChange={(e) => updateConsumption("start", parseFloat(e.target.value) || 0, false)}
-                />
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.feedConsumption.start.fact}
-                  onChange={(e) => updateConsumption("start", parseFloat(e.target.value) || 0, true)}
-                />
-
-                <Label className="flex items-center">Ріст</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.feedConsumption.growth.plan}
-                  onChange={(e) => updateConsumption("growth", parseFloat(e.target.value) || 0, false)}
-                />
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.feedConsumption.growth.fact}
-                  onChange={(e) => updateConsumption("growth", parseFloat(e.target.value) || 0, true)}
-                />
-
-                <Label className="flex items-center">Фініш</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.feedConsumption.finish.plan}
-                  onChange={(e) => updateConsumption("finish", parseFloat(e.target.value) || 0, false)}
-                />
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.feedConsumption.finish.fact}
-                  onChange={(e) => updateConsumption("finish", parseFloat(e.target.value) || 0, true)}
-                />
+            {/* Consumption */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                Витрати корму (кг/гол)
+              </p>
+              <div className="divide-y rounded-md border overflow-hidden">
+                {PHASES.map(({ key, label }) => (
+                  <div
+                    key={`cons-${key}`}
+                    className="grid grid-cols-[1fr_80px_80px] gap-x-2 items-center px-3 py-2 bg-card hover:bg-muted/30 transition-colors"
+                  >
+                    <Label className="text-sm font-normal">{label}</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={data.feedConsumption[key].plan || ""}
+                      onChange={(e) => updateCons(key, "plan", e.target.value)}
+                      className="h-7 text-center text-sm px-1"
+                      placeholder="0"
+                    />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={data.feedConsumption[key].fact || ""}
+                      onChange={(e) => updateCons(key, "fact", e.target.value)}
+                      className="h-7 text-center text-sm px-1"
+                      placeholder="0"
+                    />
+                  </div>
+                ))}
               </div>
-            </TabsContent>
+            </div>
 
-            <TabsContent value="other" className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="font-semibold">Показник</div>
-                <div className="font-semibold">План</div>
-                <div className="font-semibold">Факт</div>
-
-                <Label className="flex items-center">FCR (кг корму / кг живої ваги)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.fcr.plan}
-                  onChange={(e) => updateField("fcr", parseFloat(e.target.value) || 0, false)}
-                />
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.fcr.fact}
-                  onChange={(e) => updateField("fcr", parseFloat(e.target.value) || 0, true)}
-                />
-
-                <Label className="flex items-center">Жива вага при забої (кг)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.liveWeight.plan}
-                  onChange={(e) => updateField("liveWeight", parseFloat(e.target.value) || 0, false)}
-                />
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.liveWeight.fact}
-                  onChange={(e) => updateField("liveWeight", parseFloat(e.target.value) || 0, true)}
-                />
-
-                <Label className="flex items-center">Вихід тушки (%)</Label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  value={formData.carcassYield.plan}
-                  onChange={(e) => updateField("carcassYield", parseFloat(e.target.value) || 0, false)}
-                />
-                <Input
-                  type="number"
-                  step="0.1"
-                  value={formData.carcassYield.fact}
-                  onChange={(e) => updateField("carcassYield", parseFloat(e.target.value) || 0, true)}
-                />
+            {/* Other */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                Загальні показники
+              </p>
+              <div className="divide-y rounded-md border overflow-hidden">
+                {OTHER.map(({ key, label, step, unit }) => (
+                  <div
+                    key={`other-${key}`}
+                    className="grid grid-cols-[1fr_80px_80px] gap-x-2 items-center px-3 py-2 bg-card hover:bg-muted/30 transition-colors"
+                  >
+                    <Label className="text-sm font-normal">
+                      {label}
+                      <span className="ml-1 text-xs text-muted-foreground">({unit})</span>
+                    </Label>
+                    <Input
+                      type="number"
+                      step={step}
+                      min="0"
+                      value={data[key].plan || ""}
+                      onChange={(e) => updateOther(key, "plan", e.target.value)}
+                      className="h-7 text-center text-sm px-1"
+                      placeholder="0"
+                    />
+                    <Input
+                      type="number"
+                      step={step}
+                      min="0"
+                      value={data[key].fact || ""}
+                      onChange={(e) => updateOther(key, "fact", e.target.value)}
+                      className="h-7 text-center text-sm px-1"
+                      placeholder="0"
+                    />
+                  </div>
+                ))}
               </div>
-            </TabsContent>
-          </Tabs>
+            </div>
 
-          <Button type="submit" disabled={isLoading} className="w-full">
-            {isLoading ? "Аналіз..." : "Розрахувати"}
-          </Button>
-        </form>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={clear}
+              className="text-xs text-muted-foreground h-7 px-2"
+            >
+              Очистити
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <ExcelUpload
+              targetForm="feed"
+              onDataParsed={(parsed) => {
+                if (parsed.feedInput) handleExcel(parsed.feedInput);
+              }}
+            />
+            {hasData && (
+              <div className="divide-y rounded-md border overflow-hidden">
+                {PHASES.map(({ key, label }) => (
+                  <div
+                    key={`preview-price-${key}`}
+                    className="grid grid-cols-[1fr_auto_auto] gap-x-4 px-3 py-2 text-xs bg-card hover:bg-muted/30"
+                  >
+                    <span className="text-muted-foreground">Ціна {label} (грн/кг)</span>
+                    <span className="font-mono tabular-nums">
+                      <span className="text-muted-foreground mr-1">П:</span>
+                      {data.feedPrice[key].plan}
+                    </span>
+                    <span className="font-mono tabular-nums">
+                      <span className="text-muted-foreground mr-1">Ф:</span>
+                      {data.feedPrice[key].fact}
+                    </span>
+                  </div>
+                ))}
+                {OTHER.map(({ key, label, unit }) => (
+                  <div
+                    key={`preview-other-${key}`}
+                    className="grid grid-cols-[1fr_auto_auto] gap-x-4 px-3 py-2 text-xs bg-card hover:bg-muted/30"
+                  >
+                    <span className="text-muted-foreground">
+                      {label} ({unit})
+                    </span>
+                    <span className="font-mono tabular-nums">
+                      <span className="text-muted-foreground mr-1">П:</span>
+                      {data[key].plan}
+                    </span>
+                    <span className="font-mono tabular-nums">
+                      <span className="text-muted-foreground mr-1">Ф:</span>
+                      {data[key].fact}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
